@@ -1,0 +1,422 @@
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: #f5f5f3; color: #1a1a1a; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 24px 64px; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { color: #6a6a66; font-size: 14px; margin: 0 0 32px; }
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  @media (max-width: 900px) {
+    .wrap { padding: 20px 16px 48px; }
+    .layout { grid-template-columns: 1fr; gap: 20px; }
+    .preview { position: static !important; order: -1; }
+    h1 { font-size: 24px; }
+  }
+  .controls { display: flex; flex-direction: column; gap: 16px; }
+  .panel-card { background: white; border: 1px solid #e2e0d8; border-radius: 12px; padding: 18px 20px; }
+  .panel-card h3 { margin: 0 0 14px; font-size: 13px; font-weight: 600; color: #1a1a1a; letter-spacing: 0.04em; text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
+  .panel-num { display: inline-block; width: 22px; height: 22px; border-radius: 50%; background: #1a1a1a; color: white; text-align: center; line-height: 22px; font-size: 11px; font-weight: 700; }
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 12px; font-weight: 500; color: #6a6a66; margin-bottom: 6px; }
+  .field select, .field input { width: 100%; padding: 9px 12px; font-size: 14px; border: 1px solid #d6d4cc; border-radius: 8px; background: white; font-family: inherit; color: #1a1a1a; }
+  .field select:focus, .field input:focus { outline: none; border-color: #1a1a1a; }
+  .dialogue-row { display: grid; grid-template-columns: 120px 1fr; gap: 8px; align-items: end; }
+  .preview { position: sticky; top: 24px; }
+  .preview-frame { background: #1a1a1a; border-radius: 12px; overflow: hidden; padding: 0; }
+  .preview-frame svg { display: block; width: 100%; height: auto; }
+  .out-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  button { padding: 10px 16px; font-size: 14px; font-weight: 500; border: 1px solid #1a1a1a; background: #1a1a1a; color: white; border-radius: 8px; cursor: pointer; font-family: inherit; transition: opacity 0.15s; }
+  button:hover { opacity: 0.85; }
+  button.secondary { background: white; color: #1a1a1a; }
+</style>
+
+<div class="wrap">
+  <h1>Platypods strip builder</h1>
+  <p class="sub">Pick a framing for each panel, write a line, download the strip.</p>
+
+  <div class="layout">
+    <div class="controls" id="controls"></div>
+
+    <div class="preview">
+      <div class="preview-frame" id="preview"></div>
+      <div class="out-actions">
+        <button id="dl-png-btn">Download PNG</button>
+        <button id="reset-btn" class="secondary">Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============ COLORS (traced from reference) ============
+  const PALETTE = {
+    purple: { body: "#6B4FD8", dark: "#3E2F8E" },
+    red:    { body: "#E85B6C", dark: "#A73142" }
+  };
+
+  // ============ FRAMINGS ============
+  const FRAMINGS_ESTABLISHING = [
+    { key: "two_shot",     label: "Two-shot (both normal size)" },
+    { key: "red_looms",    label: "Red looms close" },
+    { key: "purple_looms", label: "Purple looms close" }
+  ];
+  const FRAMINGS_CLOSER = [
+    { key: "purple_alone",       label: "Purple alone" },
+    { key: "red_alone",          label: "Red alone" },
+    { key: "both_facing",        label: "Both small, facing each other" },
+    { key: "both_same_dir",      label: "Both small, same direction" },
+    { key: "both_walking_right", label: "Both walking panel right" },
+    { key: "empty",              label: "Empty panel" }
+  ];
+  const framingsForPanel = i => i < 3 ? FRAMINGS_ESTABLISHING : FRAMINGS_CLOSER;
+
+  // ============ STATE ============
+  const state = {
+    panels: [
+      { framing: "two_shot",     speaker: "purple", dialogue: "Sales and marketing are aligned." },
+      { framing: "red_looms",    speaker: "red",    dialogue: "On what?" },
+      { framing: "purple_looms", speaker: "purple", dialogue: "That we're aligned." },
+      { framing: "purple_alone", speaker: "none",   dialogue: "" }
+    ]
+  };
+
+  // ============ CONTROLS ============
+  function renderControls() {
+    const root = document.getElementById("controls");
+    root.innerHTML = "";
+    state.panels.forEach((p, i) => {
+      const card = document.createElement("div");
+      card.className = "panel-card";
+      const framingOpts = framingsForPanel(i).map(f => `<option value="${f.key}" ${p.framing === f.key ? "selected" : ""}>${f.label}</option>`).join("");
+      const speakerOpts = [["purple","Purple says"],["red","Red says"],["none","Nobody"]].map(([v,l]) =>
+        `<option value="${v}" ${p.speaker === v ? "selected" : ""}>${l}</option>`).join("");
+      const disabled = p.speaker === "none" ? "disabled" : "";
+      card.innerHTML = `
+        <h3><span class="panel-num">${i + 1}</span>Panel ${i + 1}</h3>
+        <div class="field">
+          <label>Framing</label>
+          <select data-panel="${i}" data-field="framing">${framingOpts}</select>
+        </div>
+        <div class="field">
+          <label>Dialogue</label>
+          <div class="dialogue-row">
+            <select data-panel="${i}" data-field="speaker">${speakerOpts}</select>
+            <input type="text" data-panel="${i}" data-field="dialogue" placeholder="${p.speaker === "none" ? "—" : "What they say"}" value="${escapeAttr(p.dialogue)}" ${disabled} />
+          </div>
+        </div>
+      `;
+      root.appendChild(card);
+    });
+    root.querySelectorAll("select, input").forEach(el => {
+      const evt = el.tagName === "SELECT" ? "change" : "input";
+      el.addEventListener(evt, e => {
+        const idx = parseInt(e.target.dataset.panel, 10);
+        const field = e.target.dataset.field;
+        state.panels[idx][field] = e.target.value;
+        if (field === "speaker") renderControls();
+        renderPreview();
+      });
+    });
+  }
+
+  const escapeAttr = s => (s || "").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const escapeXml = s => (s || "").replace(/[<>&'"]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", "'":"&apos;", '"':"&quot;" }[c]));
+
+  // ============ PLATYPOD SVG ============
+  // Traced from reference. Body half-width = 98 at scale 1.0 (panel size 766x770).
+  // All measurements relative to body center.
+  // facing: "right" or "left" — left = horizontal mirror of all x-offsets.
+  //
+  // Returns:
+  //   svg: the SVG markup
+  //   headCenter: {x, y} in absolute coords (for bubble tail targeting)
+  //   headTop: y coordinate of top of head (for bubble tail targeting)
+  function platypod(cx, cy, scale, color, facing) {
+    const p = PALETTE[color];
+    const f = facing === "left" ? -1 : 1;
+    const s = scale;
+
+    // Geometry relative to body center, scaled (traced from reference)
+    const parts = {
+      tail:  { dx: -113 * f, dy:  10, rx: 50, ry: 23, color: p.dark },
+      body:  { dx:    0,     dy:   0, rx: 98, ry: 62, color: p.body },
+      bill:  { dx:  123 * f, dy: -20, rx: 40, ry: 14, color: p.dark },
+      head:  { dx:   66 * f, dy: -48, r:  40,         color: p.body },
+      foot1: { dx:  -33 * f, dy:  62, rx: 14, ry: 5,  color: p.dark },
+      foot2: { dx:   18 * f, dy:  62, rx: 14, ry: 5,  color: p.dark }
+    };
+    // Eyes on head (face the facing direction — both eyes are biased toward bill side)
+    const eye1 = { dx: (66 - 6) * f,  dy: -45, r: 3 };  // left eye (rear-side of head)
+    const eye2 = { dx: (66 + 17) * f, dy: -45, r: 3 };  // right eye (bill-side)
+    // Nostrils on bill
+    const nostril1 = { dx: (123 - 15) * f, dy: -20 - 4, r: 2 };
+    const nostril2 = { dx: (123 - 15) * f, dy: -20 + 4, r: 2 };
+
+    let svg = "";
+    // Order: tail first (behind body), then body, feet, then HEAD, then bill ON TOP of head, eyes, nostrils
+    svg += `<ellipse cx="${cx + parts.tail.dx * s}" cy="${cy + parts.tail.dy * s}" rx="${parts.tail.rx * s}" ry="${parts.tail.ry * s}" fill="${parts.tail.color}"/>`;
+    svg += `<ellipse cx="${cx + parts.body.dx * s}" cy="${cy + parts.body.dy * s}" rx="${parts.body.rx * s}" ry="${parts.body.ry * s}" fill="${parts.body.color}"/>`;
+    svg += `<ellipse cx="${cx + parts.foot1.dx * s}" cy="${cy + parts.foot1.dy * s}" rx="${parts.foot1.rx * s}" ry="${parts.foot1.ry * s}" fill="${parts.foot1.color}"/>`;
+    svg += `<ellipse cx="${cx + parts.foot2.dx * s}" cy="${cy + parts.foot2.dy * s}" rx="${parts.foot2.rx * s}" ry="${parts.foot2.ry * s}" fill="${parts.foot2.color}"/>`;
+    svg += `<circle cx="${cx + parts.head.dx * s}" cy="${cy + parts.head.dy * s}" r="${parts.head.r * s}" fill="${parts.head.color}"/>`;
+    svg += `<circle cx="${cx + eye1.dx * s}" cy="${cy + eye1.dy * s}" r="${eye1.r * s}" fill="#1a1a1a"/>`;
+    svg += `<circle cx="${cx + eye2.dx * s}" cy="${cy + eye2.dy * s}" r="${eye2.r * s}" fill="#1a1a1a"/>`;
+    svg += `<ellipse cx="${cx + parts.bill.dx * s}" cy="${cy + parts.bill.dy * s}" rx="${parts.bill.rx * s}" ry="${parts.bill.ry * s}" fill="${parts.bill.color}"/>`;
+    svg += `<circle cx="${cx + nostril1.dx * s}" cy="${cy + nostril1.dy * s}" r="${nostril1.r * s}" fill="#1a1a1a"/>`;
+    svg += `<circle cx="${cx + nostril2.dx * s}" cy="${cy + nostril2.dy * s}" r="${nostril2.r * s}" fill="#1a1a1a"/>`;
+
+    return {
+      svg,
+      headCenter: { x: cx + parts.head.dx * s, y: cy + parts.head.dy * s },
+      headTop:    cy + (parts.head.dy - parts.head.r) * s
+    };
+  }
+
+  // ============ FRAMINGS ============
+  // Panel size in our SVG: PANEL_W x PANEL_H (we use 766x770 to match reference exactly).
+  // Each framing returns absolute positions in the panel (panel origin = top-left).
+  function framingPositions(framing, panelX, panelY) {
+    const PW = 766, PH = 770;
+    // Default scale 1.0 baseline. Positions in panel-relative coords from measurements.
+    const px = (rx) => panelX + rx;
+    const py = (ry) => panelY + ry;
+    switch (framing) {
+      case "two_shot":
+        return {
+          purple: { cx: px(215), cy: py(525), scale: 1.0, facing: "right" },
+          red:    { cx: px(550), cy: py(525), scale: 1.0, facing: "left" }
+        };
+      case "red_looms":
+        // Both platypods are LARGE here. Purple is mostly off-frame at left, only head/bill visible.
+        return {
+          purple: { cx: px(-98), cy: py(556), scale: 1.7, facing: "right" },
+          red:    { cx: px(475), cy: py(465), scale: 1.6, facing: "left" }
+        };
+      case "purple_looms":
+        // Purple is large in lower-left. Red is medium, partially off-frame right.
+        return {
+          purple: { cx: px(213), cy: py(448), scale: 1.6, facing: "right" },
+          red:    { cx: px(720), cy: py(470), scale: 0.9, facing: "left" }
+        };
+      case "purple_alone":
+        return { purple: { cx: px(314), cy: py(530), scale: 1.0, facing: "right" }, red: null };
+      case "red_alone":
+        return { purple: null, red: { cx: px(450), cy: py(530), scale: 1.0, facing: "right" } };
+      case "both_facing":
+        return {
+          purple: { cx: px(215), cy: py(530), scale: 1.0, facing: "right" },
+          red:    { cx: px(550), cy: py(530), scale: 1.0, facing: "left" }
+        };
+      case "both_same_dir":
+        return {
+          purple: { cx: px(215), cy: py(530), scale: 1.0, facing: "right" },
+          red:    { cx: px(486), cy: py(530), scale: 1.0, facing: "right" }
+        };
+      case "both_walking_right":
+        return {
+          purple: { cx: px(380), cy: py(530), scale: 1.0, facing: "right" },
+          red:    { cx: px(620), cy: py(530), scale: 1.0, facing: "right" }
+        };
+      case "empty":
+        return { purple: null, red: null };
+      default:
+        return { purple: null, red: null };
+    }
+  }
+
+  // ============ SPEECH BUBBLE ============
+  // Tail tip targets the speaker's head (x = head center x, y = head top - small gap).
+  // But we anchor bubble top at panel-y ~95 (from reference measurements) and let tail length vary.
+  function speechBubble(text, panelX, panelY, speakerHeadX, speakerHeadTopY, speakerSide) {
+    const PW = 766;
+    const TEXT_SIZE = 34;             // font size in panel coords
+    const TEXT_PAD_X = 28;
+    const TEXT_PAD_Y = 22;
+    const BORDER = 2.5;
+
+    // Estimate width from character count (avg ~18px/char at size 34)
+    const estCharW = TEXT_SIZE * 0.52;
+    const textW = Math.max(120, text.length * estCharW);
+    const bubbleW = textW + TEXT_PAD_X * 2;
+    const bubbleH = TEXT_SIZE + TEXT_PAD_Y * 2;
+
+    // Horizontal placement: bubble on speaker's side of panel
+    // From reference: purple bubble left edge ~80-145 from panel left; red bubble right edge ~150 from panel right
+    let bubbleX;
+    if (speakerSide === "left") {
+      bubbleX = panelX + 80;
+    } else {
+      bubbleX = panelX + PW - bubbleW - 80;
+    }
+    // Clamp to panel
+    if (bubbleX < panelX + 20) bubbleX = panelX + 20;
+    if (bubbleX + bubbleW > panelX + PW - 20) bubbleX = panelX + PW - bubbleW - 20;
+
+    // Vertical: top at panel-y 95
+    const bubbleY = panelY + 95;
+
+    // Tail: a triangle pointing down from bubble bottom toward speaker head top.
+    // Tail tip x = speaker head x (clamped to within bubble width).
+    // Tail tip y = somewhere between bubble bottom and speaker head top, but not all the way.
+    // From reference: tail extends ~22-25px below bubble bottom.
+    const tailTipX = Math.max(bubbleX + 30, Math.min(bubbleX + bubbleW - 30, speakerHeadX));
+    const tailBaseY = bubbleY + bubbleH;
+    const tailTipY = tailBaseY + 28;  // tail extends 28px below bubble
+    const tailHalfW = 12;
+    const tailBaseLeft = tailTipX - tailHalfW;
+    const tailBaseRight = tailTipX + tailHalfW;
+
+    // Build path: rounded rect bubble + triangle tail (both as ONE filled path so border is continuous)
+    const r = 10;  // corner radius
+    const bx = bubbleX, by = bubbleY, bw = bubbleW, bh = bubbleH;
+    // Outline path
+    const path = [
+      `M ${bx + r} ${by}`,
+      `L ${bx + bw - r} ${by}`,
+      `Q ${bx + bw} ${by} ${bx + bw} ${by + r}`,
+      `L ${bx + bw} ${by + bh - r}`,
+      `Q ${bx + bw} ${by + bh} ${bx + bw - r} ${by + bh}`,
+      // along bottom, but interrupted by tail
+      `L ${tailBaseRight} ${by + bh}`,
+      `L ${tailTipX} ${tailTipY}`,
+      `L ${tailBaseLeft} ${by + bh}`,
+      `L ${bx + r} ${by + bh}`,
+      `Q ${bx} ${by + bh} ${bx} ${by + bh - r}`,
+      `L ${bx} ${by + r}`,
+      `Q ${bx} ${by} ${bx + r} ${by}`,
+      `Z`
+    ].join(" ");
+
+    const textCx = bx + bw / 2;
+    const textCy = by + bh / 2 + TEXT_SIZE * 0.35;
+
+    return `
+      <path d="${path}" fill="white" stroke="#1a1a1a" stroke-width="${BORDER}" stroke-linejoin="round"/>
+      <text x="${textCx}" y="${textCy}" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="${TEXT_SIZE}" fill="#1a1a1a">${escapeXml(text)}</text>
+    `;
+  }
+
+  // ============ PANEL RENDER ============
+  function renderPanel(panel, panelX, panelY) {
+    const PW = 766, PH = 770;
+    let s = `<rect x="${panelX}" y="${panelY}" width="${PW}" height="${PH}" fill="white"/>`;
+
+    // Clip platypods to panel (so the looming ones don't bleed out)
+    const clipId = `clip-${panelX}-${panelY}`;
+    s = `<defs><clipPath id="${clipId}"><rect x="${panelX}" y="${panelY}" width="${PW}" height="${PH}"/></clipPath></defs>` + s;
+
+    const pos = framingPositions(panel.framing, panelX, panelY);
+    let purpleInfo = null, redInfo = null;
+    let podsSvg = "";
+    if (pos.purple) purpleInfo = platypod(pos.purple.cx, pos.purple.cy, pos.purple.scale, "purple", pos.purple.facing);
+    if (pos.red)    redInfo    = platypod(pos.red.cx,    pos.red.cy,    pos.red.scale,    "red",    pos.red.facing);
+    if (purpleInfo) podsSvg += purpleInfo.svg;
+    if (redInfo)    podsSvg += redInfo.svg;
+    s += `<g clip-path="url(#${clipId})">${podsSvg}</g>`;
+
+    // Speech bubble
+    if (panel.speaker !== "none" && panel.dialogue && panel.dialogue.trim()) {
+      const speakerInfo = panel.speaker === "purple" ? purpleInfo : redInfo;
+      if (speakerInfo) {
+        // Determine which side of panel the speaker is on
+        const speakerCx = speakerInfo.headCenter.x;
+        const panelCx = panelX + PW / 2;
+        const side = speakerCx < panelCx ? "left" : "right";
+        s += speechBubble(panel.dialogue.trim(), panelX, panelY, speakerInfo.headCenter.x, speakerInfo.headTop, side);
+      }
+    }
+    return s;
+  }
+
+  // ============ STRIP RENDER ============
+  function renderStrip() {
+    const PW = 766, PH = 770;
+    const HEADER_H = 295;
+    const GAP = 8;
+    const totalW = PW * 2 + GAP;
+    const totalH = HEADER_H + PH * 2 + GAP;
+
+    let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" xmlns="http://www.w3.org/2000/svg">`;
+    // Outer black background (acts as panel borders)
+    svg += `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#1a1a1a"/>`;
+    // Header
+    svg += `<text x="${totalW / 2}" y="160" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="130" font-weight="800" fill="#D4F048">Platypods</text>`;
+    svg += `<g transform="translate(${totalW / 2}, 230)">`;
+    svg += `<text x="0" y="10" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="30" font-weight="500" fill="white" letter-spacing="6">BUSINESS AS UNUSUAL</text>`;
+    svg += `</g>`;
+
+    // Panels in 2x2
+    const positions = [
+      { x: 0,        y: HEADER_H },
+      { x: PW + GAP, y: HEADER_H },
+      { x: 0,        y: HEADER_H + PH + GAP },
+      { x: PW + GAP, y: HEADER_H + PH + GAP }
+    ];
+    state.panels.forEach((p, i) => {
+      svg += renderPanel(p, positions[i].x, positions[i].y);
+    });
+    svg += `</svg>`;
+    return svg;
+  }
+
+  function renderPreview() {
+    document.getElementById("preview").innerHTML = renderStrip();
+  }
+
+  // ============ DOWNLOAD PNG ============
+  function downloadPng() {
+    const btn = document.getElementById("dl-png-btn");
+    const originalText = btn.textContent;
+    btn.textContent = "Rendering…";
+    btn.disabled = true;
+
+    const svgStr = renderStrip();
+    const svgDataUri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+
+    const img = new Image();
+    img.onload = function () {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1600;
+      canvas.height = 1867;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(function (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "platypods_strip.png";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }, "image/png");
+    };
+    img.onerror = function () {
+      btn.textContent = originalText;
+      btn.disabled = false;
+      alert("Couldn't render PNG.");
+    };
+    img.src = svgDataUri;
+  }
+
+  document.getElementById("dl-png-btn").addEventListener("click", downloadPng);
+  document.getElementById("reset-btn").addEventListener("click", () => {
+    state.panels = [
+      { framing: "two_shot",     speaker: "purple", dialogue: "" },
+      { framing: "red_looms",    speaker: "red",    dialogue: "" },
+      { framing: "purple_looms", speaker: "purple", dialogue: "" },
+      { framing: "purple_alone", speaker: "none",   dialogue: "" }
+    ];
+    renderControls();
+    renderPreview();
+  });
+
+  renderControls();
+  renderPreview();
+</script>
