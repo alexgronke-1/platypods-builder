@@ -389,7 +389,10 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "platypods_strip.png";
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+        const firstLine = state.panels.map(p => p.dialogue).find(d => d && d.trim());
+        const slug = firstLine ? "-" + firstLine.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) : "";
+        a.download = `platypods_${today}${slug}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
