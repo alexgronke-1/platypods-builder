@@ -235,12 +235,23 @@
     const TEXT_PAD_X = 28;
     const TEXT_PAD_Y = 22;
     const BORDER = 2.5;
+    const LINE_H = TEXT_SIZE * 1.24;  // vertical distance between wrapped lines
 
     // Estimate width from character count (avg ~18px/char at size 34)
     const estCharW = TEXT_SIZE * 0.52;
-    const textW = Math.max(120, text.length * estCharW);
+    // Keep the bubble inside the panel: leave a margin on both sides so the
+    // bubble (and its text) never runs past the frame. Long dialogue wraps
+    // onto extra lines and the bubble grows vertically instead.
+    const MAX_BUBBLE_W = PW - 120;
+    const MAX_TEXT_W = MAX_BUBBLE_W - TEXT_PAD_X * 2;
+
+    const lines = wrapText(text, MAX_TEXT_W, estCharW);
+    let longestChars = 0;
+    for (const ln of lines) longestChars = Math.max(longestChars, ln.length);
+    const textW = Math.min(MAX_TEXT_W, Math.max(120, longestChars * estCharW));
     const bubbleW = textW + TEXT_PAD_X * 2;
-    const bubbleH = TEXT_SIZE + TEXT_PAD_Y * 2;
+    const textBlockH = (lines.length - 1) * LINE_H + TEXT_SIZE;
+    const bubbleH = textBlockH + TEXT_PAD_Y * 2;
 
     // Horizontal placement: bubble on speaker's side of panel
     // From reference: purple bubble left edge ~80-145 from panel left; red bubble right edge ~150 from panel right
@@ -290,12 +301,37 @@
     ].join(" ");
 
     const textCx = bx + bw / 2;
-    const textCy = by + bh / 2 + TEXT_SIZE * 0.35;
+    // Baseline of the first line: center the text block vertically, then drop
+    // by roughly the cap height so line one sits correctly inside the padding.
+    const firstBaseline = by + (bh - textBlockH) / 2 + TEXT_SIZE * 0.8;
+    const tspans = lines.map((ln, i) =>
+      `<tspan x="${textCx}" y="${firstBaseline + i * LINE_H}">${escapeXml(ln)}</tspan>`
+    ).join("");
 
     return `
       <path d="${path}" fill="white" stroke="#1a1a1a" stroke-width="${BORDER}" stroke-linejoin="round"/>
-      <text x="${textCx}" y="${textCy}" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="${TEXT_SIZE}" fill="#1a1a1a">${escapeXml(text)}</text>
+      <text text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="${TEXT_SIZE}" fill="#1a1a1a">${tspans}</text>
     `;
+  }
+
+  // Greedy word-wrap. Splits on spaces; keeps a too-long single word on its own
+  // line rather than overflowing the caller's max width by more than the word.
+  function wrapText(text, maxWidth, charW) {
+    const words = text.split(/\s+/).filter(Boolean);
+    if (!words.length) return [text];
+    const lines = [];
+    let line = words[0];
+    for (let i = 1; i < words.length; i++) {
+      const candidate = line + " " + words[i];
+      if (candidate.length * charW <= maxWidth) {
+        line = candidate;
+      } else {
+        lines.push(line);
+        line = words[i];
+      }
+    }
+    lines.push(line);
+    return lines;
   }
 
   // ============ PANEL RENDER ============
